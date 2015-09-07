@@ -2,10 +2,11 @@ from flask import Flask, render_template, request, redirect
 from bokeh.plotting import figure
 from bokeh.resources import CDN
 from bokeh.embed import file_html
+from bokeh.embed import components
 
 plot = figure()
 plot.circle([1,2], [3,4])
-test_html = file_html(plot, CDN, "my plot")
+script, div = components(plot)
 
 app = Flask(__name__)
 
@@ -18,8 +19,8 @@ def index():
   return render_template('index.html')
 
 @app.route('/stock_plot')
-def plot():
-  return test_html
+def bokeh_plot():
+  return render_template('bokeh_plot_backup.html', script=script, div=div)
 
 if __name__ == '__main__':
   app.run(port=33507)
