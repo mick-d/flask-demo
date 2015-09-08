@@ -4,14 +4,13 @@ from flask.ext.moment import Moment
 from flask.ext.wtf import Form
 from wtforms import StringField, SubmitField, RadioField
 from wtforms.validators import Required
-#import wtforms.validators as validators
 from bokeh.plotting import figure
 from bokeh.embed import components
 import requests
 import simplejson as json
 import pandas as pd
 from pandas.tseries.offsets import DateOffset
-#from flask.ext.wtf.csrf import CsrfProtect
+import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'this should be a very secret key'
@@ -76,4 +75,5 @@ def bokeh_plot():
     return render_template('bokeh_plot_bs.html', script=script, div=div, stock_name=name)
 
 if __name__ == '__main__':
-    app.run(port=33507)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0')
