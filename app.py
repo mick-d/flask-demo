@@ -1,28 +1,79 @@
-from flask import Flask, render_template, request, redirect
+from flask import Flask, render_template, request, redirect, url_for, session
 from flask.ext.bootstrap import Bootstrap
 from flask.ext.moment import Moment
+from flask.ext.wtf import Form
+from wtforms import StringField, SubmitField, RadioField
+from wtforms.validators import Required
+#import wtforms.validators as validators
 from bokeh.plotting import figure
 from bokeh.embed import components
-
-plot = figure()
-plot.circle([1,2], [3,4])
-script, div = components(plot)
+import requests
+import simplejson as json
+import pandas as pd
+from pandas.tseries.offsets import DateOffset
+#from flask.ext.wtf.csrf import CsrfProtect
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'this should be a very secret key'
 bootstrap = Bootstrap(app)
 moment = Moment(app)
-
+#csrf = CsrfProtect()
+#csrf.init_app(app)
+features={'Volume': 'Volume', 'Adj. Volume': 'Adjusted Volume',
+          'Close': 'Closing price', 'Adj. Close': 'Adjusted closing price'}
+histories={'last_1m': 1, 'last_6m': 6, 'last_12m': 12}
+class StockForm(Form):
+    name = StringField('Which stock do you want information on?', validators=[Required()])
+    feature = RadioField('Which record do you want to see?', 
+                         choices=[('Volume', 'Volume'), ('Adj. Volume','Adjusted Volume'),
+                                  ('Close', 'Closing price'), ('Adj. Close', 'Adjusted closing price')],
+                         default='Volume') 
+    history = RadioField('How much of the available data history do you want to view?', 
+                         choices=[('last_1m', 'Last month'), ('last_6m', 'Last 6 months'), 
+                                  ('last_12m', 'Last 12 months')],
+                         default='last_1m')
+    submit = SubmitField('Submit')
+    
 @app.route('/')
 def main():
-  return redirect('/index')
+    return redirect('/index')
 
-@app.route('/index')
+@app.route('/index', methods=['GET', 'POST'])
 def index():
-  return render_template('index_bs.html')
+    name = None
+    form = StockForm()
+    print form.errors
+    if form.validate_on_submit():
+        session['stock_name'] = form.name.data
+        session['feature'] = form.feature.data
+        session['history'] = form.history.data
+        return redirect(url_for('bokeh_plot'))        
+    return render_template('index_bs.html', form=form, name=name)
 
 @app.route('/stock_plot')
 def bokeh_plot():
-  return render_template('bokeh_plot_bs.html', script=script, div=div)
+    name = session.get('stock_name') 
+    feature = session.get('feature')
+    feature_name = features[feature]
+    history = session.get('history')
+    n_months = histories[history]
+    stock_json_file = requests.get('https://www.quandl.com/api/v1/datasets/WIKI/' + 
+                                   name + '.json?api_key=xDbkv2XztyErqMSjJ8He')
+    stock_dict = stock_json_file.json()
+    if 'error' in stock_dict:
+        return render_template('error_bs.html', error_message=stock_dict['error'])
+    df = pd.DataFrame(stock_dict['data'])
+    df.columns=stock_dict['column_names']
+    df['Date'] = pd.to_datetime(df['Date'])
+    min_date = max(df['Date']) - DateOffset(months=n_months)
+    stock_indices = df.loc[:,'Date']>=min_date
+    stock_plot = figure(x_axis_type = "datetime")
+    stock_plot.line(df.loc[stock_indices,'Date'], df.loc[stock_indices,feature], color='#1F78B4', legend=name)
+    #stock_plot.line(dates, choam, color='#FB9A99', legend='CHOAM')
+    stock_plot.title = feature_name + " of stock " + name
+    stock_plot.grid.grid_line_alpha=0.3
+    script, div = components(stock_plot)    
+    return render_template('bokeh_plot_bs.html', script=script, div=div, stock_name=name)
 
 if __name__ == '__main__':
-  app.run(port=33507)
+    app.run(port=33507)
